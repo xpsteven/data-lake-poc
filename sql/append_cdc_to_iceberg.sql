@@ -6,12 +6,7 @@
 -- 2. 執行 INSERT INTO
 -- 3. 刪除步驟一的檔案清單
 INSERT INTO products_iceberg
-SELECT id,
-	title,
-	code,
-	price,
-	desc,
-	__dlcapturedat,
+SELECT *
 	CURRENT_TIMESTAMP AS __dlloadedat,
 	false AS __dlismerged
 FROM products_cdc
