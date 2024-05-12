@@ -25,12 +25,12 @@ const (
 
 // Product defines the structure for our product data
 type Product struct {
-	ID         int     `json:"id"`
-	Title      string  `json:"title"`
-	Code       string  `json:"code"`
-	Price      float64 `json:"price"`
-	Desc       string  `json:"desc"`
-	DlLoadedAt string  `json:"__dlloadedat"`
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	Code         string  `json:"code"`
+	Price        float64 `json:"price"`
+	Desc         string  `json:"desc"`
+	DlCapturedAt string  `json:"__dlcapturedat"`
 }
 
 // byteCountBinary converts bytes to human readable string format using binary (base 1024) unit
@@ -87,12 +87,12 @@ func main() {
 
 		for jsonData.Len() < targetSizeBytes && currentSize < totalSizeBytes {
 			product := Product{
-				ID:         gofakeit.Number(1, 100000),
-				Title:      gofakeit.ProductName(),
-				Code:       gofakeit.Generate("????-####"),
-				Price:      gofakeit.Price(10, 1000),
-				Desc:       gofakeit.Paragraph(1, 2, 250, " "),
-				DlLoadedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+				ID:           gofakeit.Number(1, 100000),
+				Title:        gofakeit.ProductName(),
+				Code:         gofakeit.Generate("????-####"),
+				Price:        gofakeit.Price(10, 1000),
+				Desc:         gofakeit.Paragraph(1, 2, 250, " "),
+				DlCapturedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 			}
 
 			data, err := json.Marshal(product)

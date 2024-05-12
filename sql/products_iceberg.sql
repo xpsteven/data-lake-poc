@@ -9,16 +9,13 @@ CREATE TABLE products_iceberg (
     code string,
     price double,
     desc string,
-    -- 擷取時間
     __dlcapturedat timestamp,
-    -- 載入時間
     __dlloadedat timestamp,
-    -- 是否合併
     __dlismerged boolean
 )
+PARTITIONED BY (__dlismerged)
 LOCATION 's3://athena-20240123/tables/default/products_iceberg/'
 TBLPROPERTIES (
     'table_type'='iceberg',
-    'write_compression'='zstd',
-    'compression_level'='10'
+    'format'='orc'
 );
