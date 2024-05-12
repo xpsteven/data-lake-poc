@@ -3,7 +3,7 @@
 -- 但可能會有多筆 __dlismerged 為 false 的資料，代表剛 insert into 近來的資料列
 -- note 2024/05/12: Athena 只支援小寫的 table 和 column 名稱
 -- note 2024/05/12: 有註解 Athena 會執行失敗
-CREATE TABLE IF NOT EXISTS products_iceberg (
+CREATE TABLE products_iceberg (
     id int,
     title string,
     code string,

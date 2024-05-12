@@ -15,11 +15,12 @@ import (
 )
 
 const (
-	s3Bucket       = "athena-20240123"
-	s3Path         = "tables/default/products_cdc/"
-	awsRegion      = "ap-northeast-1"
-	numProducts    = 10000
-	outputFilename = "products_data.json.gz"
+	s3Bucket         = "athena-20240123"
+	s3Path           = "tables/default/products_cdc/"
+	awsRegion        = "ap-northeast-1"
+	targetSizeBytes  = 100 * 1024 * 1024  // Target size for each file ~100 MB
+	totalSizeBytes   = 1024 * 1024 * 1024 // Total target size ~1 GB
+	compressionLevel = gzip.BestCompression
 )
 
 // Product defines the structure for our product data
@@ -32,8 +33,8 @@ type Product struct {
 	DlLoadedAt string  `json:"__dlloadedat"`
 }
 
-// byteCountSI converts bytes to human readable string format
-func byteCountSI(b int) string {
+// byteCountBinary converts bytes to human readable string format using binary (base 1024) unit
+func byteCountBinary(b int) string {
 	const unit = 1024
 	if b < unit {
 		return fmt.Sprintf("%d B", b)
@@ -43,11 +44,27 @@ func byteCountSI(b int) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "kMGTPE"[exp])
+	return fmt.Sprintf("%.1f %ciB", float64(b)/float64(div), "KMGTPE"[exp])
+}
+
+func uploadFile(sess *session.Session, jsonData *bytes.Buffer, index int, uncompressedSize, numRows int) {
+	uploader := s3manager.NewUploader(sess)
+	key := fmt.Sprintf("%sproducts_data_part%d.json.gz", s3Path, index)
+	_, err := uploader.Upload(&s3manager.UploadInput{
+		Bucket:          aws.String(s3Bucket),
+		Key:             aws.String(key),
+		Body:            bytes.NewReader(jsonData.Bytes()),
+		ContentEncoding: aws.String("gzip"),
+	})
+	if err != nil {
+		log.Fatalf("Failed to upload data to S3: %s", err)
+	}
+	fmt.Printf("Part %d uploaded successfully. Rows: %d, Uncompressed Size: %s, Compressed Size: %s\n",
+		index, numRows, byteCountBinary(uncompressedSize), byteCountBinary(jsonData.Len()))
 }
 
 func main() {
-	gofakeit.Seed(0) // Seed the random number generator
+	gofakeit.Seed(0)
 
 	// Initialize a session using credentials from the shared credentials file ~/.aws/credentials
 	sess, err := session.NewSession(&aws.Config{
@@ -57,63 +74,55 @@ func main() {
 		log.Fatalf("Failed to create session: %s", err)
 	}
 
-	// Create an uploader with the session and default options
-	uploader := s3manager.NewUploader(sess)
+	var currentSize, totalUncompressedSize, totalCompressedSize, totalRows int
+	fileIndex := 1
 
-	// Create a buffer to store JSON data and a variable to track uncompressed size
-	var jsonData bytes.Buffer
-	var uncompressedSize int
-	gz := gzip.NewWriter(&jsonData)
-
-	// Generate test data and write it to the gzip writer
-	for i := 1; i <= numProducts; i++ {
-		product := Product{
-			ID:         i,
-			Title:      gofakeit.ProductName(),
-			Code:       gofakeit.Generate("????-####"),
-			Price:      gofakeit.Price(10, 1000),
-			Desc:       gofakeit.Paragraph(1, 2, 250, " "),
-			DlLoadedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
-		}
-
-		data, err := json.Marshal(product)
+	for currentSize < totalSizeBytes {
+		var jsonData bytes.Buffer
+		var uncompressedSize, numRows int
+		gz, err := gzip.NewWriterLevel(&jsonData, compressionLevel)
 		if err != nil {
-			log.Fatalf("Failed to marshal JSON: %s", err)
+			log.Fatal("Failed to create gzip writer with level: ", err)
 		}
 
-		uncompressedSize += len(data) // Accumulate uncompressed data size
+		for jsonData.Len() < targetSizeBytes && currentSize < totalSizeBytes {
+			product := Product{
+				ID:         gofakeit.Number(1, 100000),
+				Title:      gofakeit.ProductName(),
+				Code:       gofakeit.Generate("????-####"),
+				Price:      gofakeit.Price(10, 1000),
+				Desc:       gofakeit.Paragraph(1, 2, 250, " "),
+				DlLoadedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
+			}
 
-		if _, err := gz.Write(data); err != nil {
-			log.Fatal("Failed to write compressed JSON: ", err)
-		}
+			data, err := json.Marshal(product)
+			if err != nil {
+				log.Fatalf("Failed to marshal JSON: %s", err)
+			}
 
-		if i != numProducts {
-			if _, err := gz.Write([]byte("\n")); err != nil { // Add newline between JSON entries
+			if _, err := gz.Write(data); err != nil {
+				log.Fatal("Failed to write compressed JSON: ", err)
+			}
+			if _, err := gz.Write([]byte("\n")); err != nil {
 				log.Fatal("Failed to write newline to gzip: ", err)
 			}
-			uncompressedSize++ // Account for the newline in uncompressed size
+
+			numRows++
+			uncompressedSize += len(data) + 1 // Plus one for the newline character
+			currentSize += len(data) + 1
 		}
+
+		if err := gz.Close(); err != nil {
+			log.Fatal("Failed to close gzip writer: ", err)
+		}
+
+		uploadFile(sess, &jsonData, fileIndex, uncompressedSize, numRows)
+		totalUncompressedSize += uncompressedSize
+		totalCompressedSize += jsonData.Len()
+		totalRows += numRows
+		fileIndex++
 	}
 
-	// Close the gzip writer to finalize the compressed data
-	if err := gz.Close(); err != nil {
-		log.Fatal("Failed to close gzip writer: ", err)
-	}
-
-	// Upload the compressed JSON data to S3
-	_, err = uploader.Upload(&s3manager.UploadInput{
-		Bucket:          aws.String(s3Bucket),
-		Key:             aws.String(fmt.Sprintf("%s%s", s3Path, outputFilename)),
-		Body:            bytes.NewReader(jsonData.Bytes()),
-		ContentEncoding: aws.String("gzip"),
-	})
-	if err != nil {
-		log.Fatalf("Failed to upload data to S3: %s", err)
-	}
-
-	// Output file sizes and number of products
-	fmt.Printf("Upload completed successfully.\n")
-	fmt.Printf("Number of products: %d\n", numProducts)
-	fmt.Printf("Uncompressed data size: %s\n", byteCountSI(uncompressedSize))
-	fmt.Printf("Compressed data size: %s\n", byteCountSI(jsonData.Len()))
+	fmt.Printf("Total data generated and uploaded: %d parts, %d rows, Total Uncompressed Size: %s, Total Compressed Size: %s\n",
+		fileIndex-1, totalRows, byteCountBinary(totalUncompressedSize), byteCountBinary(totalCompressedSize))
 }
