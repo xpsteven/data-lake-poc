@@ -6,4 +6,4 @@ WITH tmp AS (
 ) 
 SELECT *
 FROM tmp
-WHERE (rn = 1)
+WHERE rn = 1

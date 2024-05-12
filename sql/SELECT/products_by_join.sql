@@ -10,4 +10,5 @@ SELECT id,
 	__dlcapturedat
 FROM products_by_join
 WHERE price < 100
+ORDER BY id DESC
 LIMIT 100

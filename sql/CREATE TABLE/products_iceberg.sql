@@ -17,5 +17,6 @@ PARTITIONED BY (__dlismerged)
 LOCATION 's3://athena-20240123/tables/default/products_iceberg/'
 TBLPROPERTIES (
     'table_type'='iceberg',
+    'write_compression'='ZSTD',
     'format'='orc'
 );
