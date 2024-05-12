@@ -1,10 +1,11 @@
+-- products_by_join 確保每個 id 都只有最新的那列
 -- 只有 JOIN 法可以穿透 WHERE 條件下去
 -- 並啟用 dynamic filter
-CREATE OR REPLACE VIEW "products_by_join" AS
+CREATE OR REPLACE VIEW "products" AS
 WITH tmp AS (
     SELECT id,
         MAX(__dlcapturedat) latest_capturedat,
-        MIN(__dlismerged) __dlismerged
+        BOOL_AND(__dlismerged) __dlismerged
     FROM products_iceberg
     GROUP BY id
 )
